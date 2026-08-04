@@ -1,0 +1,18 @@
+name: Minecraft-Video-Player
+version: '${project.version}'
+main: dev.bdinc.minecraft_video_player.Main
+api-version: 1.19
+commands:
+  processimage:
+    description: Processes the image
+  processvideo:
+    description: Processes the video
+  processstream:
+    description: Processes the stream
+  undoimage:
+    description: Undo the image
+  setres:
+    description: Sets the resolution
+  stopvideo:
+    description: Stops the current video
+    usage: /stopvideo
