@@ -9,122 +9,175 @@ import org.bukkit.craftbukkit.v1_19_R3.util.CraftMagicNumbers;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.VoxelShape;
 
-import java.awt.*;
-import java.util.*;
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ColorManager {
 
-    public static HashMap<Material, Color> colorMap = new HashMap<>();
-    public static HashMap<Integer, Material> pixelCache = new HashMap<>();
+    // Materials that can be used
+    private static Material[] materials;
+
+    // RGB values (0xRRGGBB)
+    private static int[] materialColors;
+
+    // 32 * 32 * 32 lookup table
+    private static final Material[] pixelCache =
+            new Material[32 * 32 * 32];
 
     public static Color getColor(Block block) {
         CraftBlock cb = (CraftBlock) block;
         net.minecraft.world.level.block.state.BlockState bs = cb.getNMS();
-        net.minecraft.world.level.material.MaterialColor mc = bs.getMapColor(cb.getCraftWorld().getHandle(), cb.getPosition());
+        net.minecraft.world.level.material.MaterialColor mc =
+                bs.getMapColor(
+                        cb.getCraftWorld().getHandle(),
+                        cb.getPosition()
+                );
+
         return new Color(mc.col);
     }
 
     public static Color getColor(Material material) {
-        net.minecraft.world.level.block.Block block = CraftMagicNumbers.getBlock(material);
-        net.minecraft.world.level.material.MaterialColor mc = block.defaultMaterialColor();
+        net.minecraft.world.level.block.Block block =
+                CraftMagicNumbers.getBlock(material);
+
+        net.minecraft.world.level.material.MaterialColor mc =
+                block.defaultMaterialColor();
+
         return new Color(mc.col);
     }
 
     public static void setupColorMap() {
-        Iterator<Material> iterator = Arrays.stream(Material.values()).iterator();
+
+        List<Material> materialList = new ArrayList<>();
+        List<Integer> colorList = new ArrayList<>();
 
         World world = Bukkit.getWorlds().get(0);
         Block defaultBlock = world.getBlockAt(0, 0, 0);
-        while (iterator.hasNext()) {
-            Material material = iterator.next();
 
-            // Removing some blocks that are not suitable for this
-            if (!material.isBlock() || material.isAir() || !material.isSolid()) continue;
-            if (material.name().contains("GLASS") || material.equals(Material.BARRIER)) continue;
-            if (material.name().contains("POWDER") || material.name().contains("SAND") || material.name().contains("GRAVEL")) continue;
-            if (material.equals(Material.REDSTONE_LAMP) || material.name().contains("SHULKER") || material.name().contains("GLAZED")) continue;
+        for (Material material : Material.values()) {
+
+            if (!material.isBlock()
+                    || material.isAir()
+                    || !material.isSolid())
+                continue;
+
+            if (material.name().contains("GLASS"))
+                continue;
+
+            if (material == Material.BARRIER)
+                continue;
+
+            if (material.name().contains("POWDER"))
+                continue;
+
+            if (material.name().contains("SAND"))
+                continue;
+
+            if (material.name().contains("GRAVEL"))
+                continue;
+
+            if (material == Material.REDSTONE_LAMP)
+                continue;
+
+            if (material.name().contains("SHULKER"))
+                continue;
+
+            if (material.name().contains("GLAZED"))
+                continue;
 
             if (Main.speedMode) {
-                if (material.name().toUpperCase().contains("WOOL") || material.name().toUpperCase().contains("CONCRETE") || material.name().toUpperCase().contains("TERRACOTTA")){
-                    colorMap.put(material, getColor(material));
-                }
+
+                String name = material.name();
+
+                if (!(name.contains("WOOL")
+                        || name.contains("CONCRETE")
+                        || name.contains("TERRACOTTA")))
+                    continue;
             }
 
+            materialList.add(material);
+
+            Color c = getColor(material);
+
+            colorList.add(
+                    (c.getRed() << 16)
+                            | (c.getGreen() << 8)
+                            | c.getBlue()
+            );
         }
+
+        materials =
+                materialList.toArray(new Material[0]);
+
+        materialColors =
+                new int[colorList.size()];
+
+        for (int i = 0; i < colorList.size(); i++) {
+            materialColors[i] = colorList.get(i);
+        }
+
         world.getBlockAt(0, 0, 0).setType(defaultBlock.getType());
         world.getBlockAt(0, 0, 0).setBlockData(defaultBlock.getBlockData(), false);
+    }
+
+    public static Material getBlock(int rgb) {
+
+        int r = ((rgb >> 16) & 0xFF) & 0xF8;
+        int g = ((rgb >> 8) & 0xFF) & 0xF8;
+        int b = (rgb & 0xFF) & 0xF8;
+
+        int index =
+                ((r >> 3) << 10)
+                        | ((g >> 3) << 5)
+                        | (b >> 3);
+
+        Material cached = pixelCache[index];
+
+        if (cached != null) {
+            return cached;
+        }
+
+        int bestDistance = Integer.MAX_VALUE;
+        Material bestMaterial = Material.AIR;
+
+        for (int i = 0; i < materials.length; i++) {
+
+            int mc = materialColors[i];
+
+            int mr = (mc >> 16) & 0xFF;
+            int mg = (mc >> 8) & 0xFF;
+            int mb = mc & 0xFF;
+
+            int dr = r - mr;
+            int dg = g - mg;
+            int db = b - mb;
+
+            int distance =
+                    dr * dr +
+                            dg * dg +
+                            db * db;
+
+            if (distance < bestDistance) {
+
+                bestDistance = distance;
+                bestMaterial = materials[i];
+
+            }
+        }
+
+        pixelCache[index] = bestMaterial;
+
+        return bestMaterial;
     }
 
     public static boolean isCube(Block block) {
         VoxelShape voxelShape = block.getCollisionShape();
         BoundingBox boundingBox = block.getBoundingBox();
-        return (voxelShape.getBoundingBoxes().size() == 1
+
+        return voxelShape.getBoundingBoxes().size() == 1
                 && boundingBox.getWidthX() == 1.0
                 && boundingBox.getHeight() == 1.0
-                && boundingBox.getWidthZ() == 1.0
-        );
-    }
-
-    // Get the closest material to the color
-    public static Material lastMaterial;
-    public static Color lastColor;
-
-
-    public static Material getBlock(Color color) {
-        if (lastColor != null && lastColor.equals(color)) {
-            return lastMaterial;
-        }
-
-        double minDistance = Double.MAX_VALUE;
-        Material closestMaterial = Material.AIR;
-
-        // Iterate through the color map and find the closest color
-        for (Map.Entry<Material, Color> materialColorEntry : colorMap.entrySet()) {
-            Material material = materialColorEntry.getKey();
-            Color materialColor = materialColorEntry.getValue();
-            double distance = getDistance(color, materialColor);
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestMaterial = material;
-            }
-        }
-
-
-
-        lastMaterial = closestMaterial;
-        lastColor = color;
-        return closestMaterial;
-    }
-
-    public static Material getBlock(int rgb) {
-
-        Material cached = pixelCache.get(rgb);
-
-        if(cached != null) {
-            return cached;
-        }
-
-
-        Color color = new Color(
-                (rgb >> 16) & 0xFF,
-                (rgb >> 8) & 0xFF,
-                rgb & 0xFF
-        );
-
-
-        Material material = getBlock(color);
-
-
-        pixelCache.put(rgb, material);
-
-
-        return material;
-    }
-
-    public static double getDistance(Color color1, Color color2) {
-        double redDistance = Math.pow(color1.getRed() - color2.getRed(), 2);
-        double greenDistance = Math.pow(color1.getGreen() - color2.getGreen(), 2);
-        double blueDistance = Math.pow(color1.getBlue() - color2.getBlue(), 2);
-        return Math.sqrt(redDistance + greenDistance + blueDistance);
+                && boundingBox.getWidthZ() == 1.0;
     }
 }

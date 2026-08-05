@@ -2,6 +2,7 @@ package dev.bdinc.minecraft_video_player;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.state.BlockState;
 import org.apache.commons.io.FileUtils;
 import org.bukkit.*;
 import org.bukkit.craftbukkit.v1_19_R3.CraftWorld;
@@ -28,6 +29,7 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Objects;
 import java.nio.file.Files;
 
@@ -56,10 +58,13 @@ public final class Main extends JavaPlugin {
     private int pendingX;
     private int pendingY;
     private int pendingZ;
-    private int[][] lastFramePixels;
+    private int[] lastFramePixels;
     private int cacheWidth = 0;
     private int cacheHeight = 0;
     public static ArrayList<Location> latestLocation = new ArrayList<>();
+    private static final HashMap<Integer, Material> rgbCache = new HashMap<>();
+    private static final HashMap<Material, BlockState> STATE_CACHE = new HashMap<>();
+    private static final BlockPos.MutableBlockPos MUTABLE_POS = new BlockPos.MutableBlockPos();
 
     @Override
     public void onEnable() {
@@ -561,54 +566,53 @@ public final class Main extends JavaPlugin {
 
     void pasteImage(World world, int x, int y, int z, BufferedImage image) {
 
-
-        if(lastFramePixels == null
+        if (lastFramePixels == null
                 || cacheWidth != image.getWidth()
                 || cacheHeight != image.getHeight()) {
-
 
             cacheWidth = image.getWidth();
             cacheHeight = image.getHeight();
 
-            lastFramePixels =
-                    new int[cacheWidth][cacheHeight];
+            lastFramePixels = new int[cacheWidth * cacheHeight];
         }
 
+        // Grab ALL pixels ONCE
+        int[] pixels = image.getRGB(
+                0,
+                0,
+                cacheWidth,
+                cacheHeight,
+                null,
+                0,
+                cacheWidth
+        );
 
+        // Grab NMS world ONCE
+        ServerLevel nmsWorld = ((CraftWorld) world).getHandle();
 
-        for(int i = 0; i < cacheWidth; i++) {
+        for (int j = 0; j < cacheHeight; j++) {
+            for (int i = 0; i < cacheWidth; i++) {
 
-            for(int j = 0; j < cacheHeight; j++) {
+                int index = j * cacheWidth + i;
+                int rgb = pixels[index];
 
-
-                int rgb =
-                        image.getRGB(i,j);
-
-
-
-                if(lastFramePixels[i][j] == rgb) {
+                if (lastFramePixels[index] == rgb)
                     continue;
-                }
 
+                lastFramePixels[index] = rgb;
 
-                lastFramePixels[i][j] = rgb;
-
-
-
-                Material material =
-                        ColorManager.getBlock(rgb);
-
-
-
-                setBlockInNativeWorld(
-                        world,
-                        x+i,
-                        y,
-                        z+j,
-                        material,
-                        false
+                Material material = rgbCache.computeIfAbsent(
+                        rgb,
+                        ColorManager::getBlock
                 );
 
+                setBlockInNativeWorld(
+                        nmsWorld,
+                        x + i,
+                        y,
+                        z + j,
+                        material
+                );
             }
         }
     }
@@ -623,7 +627,8 @@ public final class Main extends JavaPlugin {
         for (int i = 0; i < MAX_WIDTH; i++) {
             for (int j = 0; j < MAX_HEIGHT; j++) {
                 assert world != null;
-                setBlockInNativeWorld(world, x + i, y, z + j, Material.AIR, false);
+                ServerLevel nmsWorld =
+                        ((CraftWorld) world).getHandle();
             }
         }
     }
@@ -655,10 +660,49 @@ public final class Main extends JavaPlugin {
     }
 
 
-    public static void setBlockInNativeWorld(World world, int x, int y, int z, Material material, boolean applyPhysics) {
-        ServerLevel nmsWorld = ((CraftWorld) world).getHandle();
-        BlockPos blockPos = new BlockPos(x, y, z);
-        nmsWorld.setBlock(blockPos, CraftMagicNumbers.getBlock(material).defaultBlockState(), applyPhysics ? 3 : 2);
+    private static final BlockPos.MutableBlockPos POS =
+            new BlockPos.MutableBlockPos();
+
+    public static void setBlockInNativeWorld(
+            ServerLevel world,
+            int x,
+            int y,
+            int z,
+            Material material
+    ) {
+
+        BlockState state = STATE_CACHE.computeIfAbsent(
+                material,
+                m -> CraftMagicNumbers.getBlock(m).defaultBlockState()
+        );
+
+        MUTABLE_POS.set(x, y, z);
+
+        world.setBlock(
+                MUTABLE_POS,
+                state,
+                2
+        );
+    }
+
+    private static final net.minecraft.world.level.block.state.BlockState[] BLOCK_STATES =
+            new net.minecraft.world.level.block.state.BlockState[Material.values().length];
+
+    static {
+
+        for (Material material : Material.values()) {
+
+            if (material.isBlock()) {
+
+                BLOCK_STATES[material.ordinal()] =
+                        CraftMagicNumbers
+                                .getBlock(material)
+                                .defaultBlockState();
+
+            }
+
+        }
+
     }
 
     public void startResourcePackServer() {
