@@ -16,3 +16,5 @@ commands:
   stopvideo:
     description: Stops the current video
     usage: /stopvideo
+  playvideo:
+    description: Starts the video after the resource pack loads

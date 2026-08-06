@@ -1,28 +1,30 @@
 package dev.bdinc.minecraft_video_player;
 
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
-import org.bukkit.entity.Player;
 
 public class ResourcePackListener implements Listener {
 
-
     @EventHandler
-    public void onPackLoaded(PlayerResourcePackStatusEvent event) {
+    public void onResourcePack(PlayerResourcePackStatusEvent event) {
 
+        if (event.getStatus() ==
+                PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
 
-        if(event.getStatus()
-                == PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED) {
+            TextComponent message =
+                    new TextComponent("§a✔ Resource pack loaded! §e[CLICK TO PLAY]");
 
+            message.setClickEvent(
+                    new ClickEvent(
+                            ClickEvent.Action.RUN_COMMAND,
+                            "/playvideo"
+                    )
+            );
 
-            Main.getInstance()
-                    .startVideoAfterPack(
-                            event.getPlayer()
-                    );
-
+            event.getPlayer().spigot().sendMessage(message);
         }
-
     }
-
 }

@@ -73,6 +73,7 @@ public final class Main extends JavaPlugin {
                 );
         startResourcePackServer();
         ColorManager.setupColorMap();
+        Objects.requireNonNull(getCommand("playvideo")).setExecutor(new PlayVideoCommand(this));
         Objects.requireNonNull(getCommand("processimage")).setExecutor(new ProcessImageCommand());
         Objects.requireNonNull(getCommand("processvideo")).setExecutor(new ProcessVideoCommand());
         Objects.requireNonNull(getCommand("processstream")).setExecutor(new ProcessStreamCommand());
